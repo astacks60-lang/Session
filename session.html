@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Session</title>
+
+  <!-- Home-screen / full-screen app behavior -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Session" />
+  <meta name="theme-color" content="#121214" />
+
+  <!-- Dependencies (all public CDNs) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap');
+    html, body { margin: 0; background: #121214; color: #F2F1ED; font-family: Inter, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .num { font-family: 'Bebas Neue', Inter, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+    input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    /* ---------- tiny inline icon set (replaces lucide-react) ---------- */
+    const Icon = ({ children, size = 24, color, className, style }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+           fill="none" stroke={color || "currentColor"} strokeWidth="2" strokeLinecap="round"
+           strokeLinejoin="round" className={className} style={style}>{children}</svg>
+    );
+    const Dumbbell = (p) => <Icon {...p}>
+      <path d="M14.4 14.4 9.6 9.6" />
+      <path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z" />
+      <path d="m21.5 21.5-1.4-1.4" />
+      <path d="M3.9 3.9 2.5 2.5" />
+      <path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.829 2.829z" />
+    </Icon>;
+    const History = (p) => <Icon {...p}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" /><path d="M12 7v5l4 2" />
+    </Icon>;
+    const TrendingUp = (p) => <Icon {...p}>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" />
+    </Icon>;
+    const Plus = (p) => <Icon {...p}><path d="M5 12h14" /><path d="M12 5v14" /></Icon>;
+    const Trash2 = (p) => <Icon {...p}>
+      <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+    </Icon>;
+    const X = (p) => <Icon {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Icon>;
+    const Flame = (p) => <Icon {...p}>
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </Icon>;
+    const Loader2 = (p) => <Icon {...p}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></Icon>;
+
+    /* ---------- data helpers ---------- */
+    const EXERCISE_LIBRARY = {
+      "Delts / Arms": ["Lateral Raise", "Overhead Press", "Cable Lateral Raise", "Barbell Curl", "Hammer Curl", "Skull Crusher", "Triceps Pushdown"],
+      "Back": ["Deadlift", "Barbell Row", "Lat Pulldown", "Pull-Up", "Seated Cable Row", "Face Pull"],
+      "Chest": ["Barbell Bench Press", "Incline Dumbbell Press", "Cable Fly", "Dips", "Machine Chest Press"],
+      "Legs": ["Back Squat", "Romanian Deadlift", "Leg Press", "Leg Curl", "Leg Extension", "Walking Lunge", "Calf Raise"],
+    };
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const todayISO = () => new Date().toISOString().slice(0, 10);
+    const fmtDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const shortDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const epley1RM = (w, r) => (r <= 1 ? w : Math.round(w * (1 + r / 30)));
+    const plateColor = (w) => {
+      if (w <= 45) return "#8B8D93";
+      if (w <= 95) return "#3E7CE0";
+      if (w <= 135) return "#E0B23E";
+      if (w <= 185) return "#3EBE6E";
+      if (w <= 225) return "#E0473E";
+      return "#C8FF3D";
+    };
+
+    /* ---------- storage: browser localStorage (works when self-hosted) ---------- */
+    function useWorkouts() {
+      const [workouts, setWorkouts] = useState(null);
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        try {
+          const raw = localStorage.getItem("session_workouts");
+          setWorkouts(raw ? JSON.parse(raw) : []);
+        } catch {
+          setWorkouts([]);
+        }
+      }, []);
+
+      const persist = useCallback((next) => {
+        setWorkouts(next);
+        setSaving(true);
+        try {
+          localStorage.setItem("session_workouts", JSON.stringify(next));
+        } catch {}
+        setTimeout(() => setSaving(false), 250);
+      }, []);
+
+      return { workouts, persist, saving };
+    }
+
+    /* ---------- custom SVG progress chart (no chart library needed) ---------- */
+    function MiniChart({ data }) {
+      const [active, setActive] = useState(data.length - 1);
+      useEffect(() => { setActive(data.length - 1); }, [data.length]);
+
+      const W = 320, H = 172, padL = 30, padR = 14, padT = 24, padB = 26;
+      const ys = data.map((d) => d.e1rm);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const spanY = maxY - minY || 1;
+      const px = (i) => data.length === 1 ? padL + (W - padL - padR) / 2 : padL + (i / (data.length - 1)) * (W - padL - padR);
+      const py = (v) => padT + (1 - (v - minY) / spanY) * (H - padT - padB);
+      const line = data.map((d, i) => `${px(i)},${py(d.e1rm)}`).join(" ");
+      const areaPath = `M ${px(0)},${py(data[0].e1rm)} ` + data.map((d, i) => `L ${px(i)},${py(d.e1rm)}`).join(" ") +
+        ` L ${px(data.length - 1)},${H - padB} L ${px(0)},${H - padB} Z`;
+      const gridVals = [maxY, Math.round((maxY + minY) / 2), minY];
+      const a = data[Math.min(active, data.length - 1)];
+
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+          <defs>
+            <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FF4B2B" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="#FF4B2B" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {gridVals.map((v, i) => (
+            <g key={i}>
+              <line x1={padL} y1={py(v)} x2={W - padR} y2={py(v)} stroke="#2A2B2F" strokeDasharray="3 3" />
+              <text x={0} y={py(v) + 3} fill="#8B8D93" fontSize="9">{v}</text>
+            </g>
+          ))}
+          {data.length > 1 && <path d={areaPath} fill="url(#fill)" />}
+          {data.length > 1 && <polyline points={line} fill="none" stroke="#FF4B2B" strokeWidth="2" />}
+          {data.map((d, i) => (
+            <circle key={i} cx={px(i)} cy={py(d.e1rm)} r={i === active ? 5 : 3}
+              fill={i === active ? "#C8FF3D" : "#FF4B2B"} stroke="#1C1D20" strokeWidth="1.5"
+              onClick={() => setActive(i)} style={{ cursor: "pointer" }} />
+          ))}
+          <text x={px(0)} y={H - 8} fill="#8B8D93" fontSize="9" textAnchor="start">{shortDate(data[0].date)}</text>
+          {data.length > 1 && (
+            <text x={px(data.length - 1)} y={H - 8} fill="#8B8D93" fontSize="9" textAnchor="end">
+              {shortDate(data[data.length - 1].date)}
+            </text>
+          )}
+          {a && (
+            <text x={Math.min(Math.max(px(active), padL + 20), W - padR - 20)} y={py(a.e1rm) - 10}
+              fill="#F2F1ED" fontSize="10" textAnchor="middle" fontWeight="600">
+              {a.e1rm} lbs · {a.label}
+            </text>
+          )}
+        </svg>
+      );
+    }
+
+    /* ---------- screens ---------- */
+    function Header({ date, saving }) {
+      return (
+        <header className="px-4 pb-4 max-w-md mx-auto flex items-end justify-between"
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 20px)" }}>
+          <div>
+            <div className="text-[#8B8D93] text-xs uppercase tracking-widest mb-1">{fmtDate(date)}</div>
+            <div className="num text-4xl leading-none">Session Log</div>
+          </div>
+          <div className="text-[10px] text-[#8B8D93] h-4">{saving ? "saving…" : ""}</div>
+        </header>
+      );
+    }
+
+    function BottomNav({ tab, setTab, hasDraft }) {
+      const items = [
+        { id: "log", label: "Log", Icon: Dumbbell },
+        { id: "history", label: "History", Icon: History },
+        { id: "progress", label: "Progress", Icon: TrendingUp },
+      ];
+      return (
+        <nav className="fixed bottom-0 left-0 right-0 bg-[#1C1D20] border-t border-[#2A2B2F]"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="max-w-md mx-auto grid grid-cols-3">
+            {items.map(({ id, label, Icon }) => (
+              <button key={id} onClick={() => setTab(id)}
+                className="relative flex flex-col items-center gap-1 py-3 text-xs"
+                style={{ color: tab === id ? "#FF4B2B" : "#8B8D93" }}>
+                <Icon size={20} />
+                {label}
+                {id === "log" && hasDraft && (
+                  <span className="absolute top-2 right-[38%] w-1.5 h-1.5 rounded-full bg-[#C8FF3D]" />
+                )}
+              </button>
+            ))}
+          </div>
+        </nav>
+      );
+    }
+
+    function ExercisePicker({ onPick, onClose }) {
+      const [custom, setCustom] = useState("");
+      return (
+        <div className="mt-4 bg-[#1C1D20] rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold text-sm">Choose an exercise</div>
+            <button onClick={onClose} className="text-[#8B8D93]"><X size={16} /></button>
+          </div>
+          {Object.entries(EXERCISE_LIBRARY).map(([group, list]) => (
+            <div key={group} className="mb-3">
+              <div className="text-[10px] uppercase tracking-widest text-[#8B8D93] mb-2">{group}</div>
+              <div className="flex flex-wrap gap-2">
+                {list.map((name) => (
+                  <button key={name} onClick={() => onPick(name)}
+                    className="text-xs bg-[#232427] px-3 py-2 rounded-lg active:bg-[#2A2B2F]">{name}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-2">
+            <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Custom exercise…"
+              className="flex-1 bg-[#232427] rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[#FF4B2B]" />
+            <button onClick={() => custom.trim() && onPick(custom.trim())}
+              className="bg-[#FF4B2B] px-4 rounded-lg text-sm font-medium">Add</button>
+          </div>
+        </div>
+      );
+    }
+
+    function LogTab({ draft, startWorkout, updateDraft, finishWorkout, discardWorkout, bestE1RM }) {
+      const [picking, setPicking] = useState(false);
+
+      if (!draft) {
+        return (
+          <div className="mt-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-[#1C1D20] flex items-center justify-center mx-auto mb-4">
+              <Dumbbell size={26} color="#FF4B2B" />
+            </div>
+            <div className="text-lg font-semibold mb-1">No session running</div>
+            <div className="text-[#8B8D93] text-sm mb-6">Start a workout and log sets as you go.</div>
+            <button onClick={startWorkout}
+              className="bg-[#FF4B2B] text-white font-semibold px-6 py-3 rounded-xl active:scale-95 transition-transform">
+              Start Workout
+            </button>
+          </div>
+        );
+      }
+
+      const addExercise = (name) => {
+        updateDraft((w) => ({ ...w, exercises: [...w.exercises, { id: uid(), name, sets: [] }] }));
+        setPicking(false);
+      };
+      const removeExercise = (exId) =>
+        updateDraft((w) => ({ ...w, exercises: w.exercises.filter((e) => e.id !== exId) }));
+      const addSet = (exId) =>
+        updateDraft((w) => ({ ...w, exercises: w.exercises.map((e) =>
+          e.id === exId ? { ...e, sets: [...e.sets, { id: uid(), weight: "", reps: "" }] } : e) }));
+      const updateSet = (exId, setId, field, value) =>
+        updateDraft((w) => ({ ...w, exercises: w.exercises.map((e) =>
+          e.id === exId ? { ...e, sets: e.sets.map((s) => (s.id === setId ? { ...s, [field]: value } : s)) } : e) }));
+      const removeSet = (exId, setId) =>
+        updateDraft((w) => ({ ...w, exercises: w.exercises.map((e) =>
+          e.id === exId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e) }));
+
+      const totalSets = draft.exercises.reduce((n, e) => n + e.sets.length, 0);
+
+      return (
+        <div>
+          <div className="space-y-4">
+            {draft.exercises.map((ex) => {
+              const best = bestE1RM(ex.name, draft.id);
+              return (
+                <div key={ex.id} className="bg-[#1C1D20] rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold">{ex.name}</div>
+                    <button onClick={() => removeExercise(ex.id)} className="text-[#8B8D93] active:text-[#FF4B2B]">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {ex.sets.map((s, i) => {
+                      const e1 = epley1RM(Number(s.weight) || 0, Number(s.reps) || 0);
+                      const isPR = e1 > 0 && e1 > best;
+                      return (
+                        <div key={s.id} className="flex items-center gap-2">
+                          <div className="w-2 h-8 rounded-full shrink-0" style={{ backgroundColor: plateColor(Number(s.weight) || 0) }} />
+                          <div className="text-[#8B8D93] text-xs w-4">{i + 1}</div>
+                          <input type="number" inputMode="decimal" placeholder="lbs" value={s.weight}
+                            onChange={(e) => updateSet(ex.id, s.id, "weight", e.target.value)}
+                            className="num bg-[#232427] rounded-lg px-2 py-2 w-20 text-lg text-center outline-none focus:ring-1 focus:ring-[#FF4B2B]" />
+                          <span className="text-[#8B8D93] text-xs">×</span>
+                          <input type="number" inputMode="numeric" placeholder="reps" value={s.reps}
+                            onChange={(e) => updateSet(ex.id, s.id, "reps", e.target.value)}
+                            className="num bg-[#232427] rounded-lg px-2 py-2 w-16 text-lg text-center outline-none focus:ring-1 focus:ring-[#FF4B2B]" />
+                          {isPR && (
+                            <span className="flex items-center gap-1 text-[10px] font-semibold text-[#C8FF3D] ml-1">
+                              <Flame size={12} /> PR
+                            </span>
+                          )}
+                          <button onClick={() => removeSet(ex.id, s.id)} className="ml-auto text-[#8B8D93] active:text-[#FF4B2B]">
+                            <X size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button onClick={() => addSet(ex.id)} className="mt-3 flex items-center gap-1 text-sm text-[#FF4B2B] font-medium">
+                    <Plus size={15} /> Add Set
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {picking ? (
+            <ExercisePicker onPick={addExercise} onClose={() => setPicking(false)} />
+          ) : (
+            <button onClick={() => setPicking(true)}
+              className="mt-4 w-full border border-dashed border-[#3A3B3F] text-[#8B8D93] rounded-2xl py-4 flex items-center justify-center gap-2 active:bg-[#1C1D20]">
+              <Plus size={16} /> Add Exercise
+            </button>
+          )}
+
+          {draft.exercises.length > 0 && (
+            <div className="mt-6 flex gap-3">
+              <button onClick={discardWorkout} className="flex-1 py-3 rounded-xl text-sm font-medium text-[#8B8D93] bg-[#1C1D20]">
+                Discard
+              </button>
+              <button onClick={finishWorkout} disabled={totalSets === 0}
+                className="flex-[2] py-3 rounded-xl text-sm font-semibold bg-[#FF4B2B] text-white disabled:opacity-40">
+                Finish Workout · {totalSets} sets
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function HistoryTab({ done, deleteWorkout }) {
+      if (done.length === 0) {
+        return (
+          <div className="mt-16 text-center text-[#8B8D93]">
+            <History className="mx-auto mb-3" size={26} />
+            <div className="text-sm">No workouts logged yet.</div>
+            <div className="text-sm">Finish your first session and it'll show up here.</div>
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-3">
+          {done.map((w) => {
+            const totalSets = w.exercises.reduce((n, e) => n + e.sets.length, 0);
+            const topWeight = Math.max(0, ...w.exercises.flatMap((e) => e.sets.map((s) => Number(s.weight) || 0)));
+            return (
+              <div key={w.id} className="bg-[#1C1D20] rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="font-semibold text-sm">{fmtDate(w.date)}</div>
+                    <div className="text-[#8B8D93] text-xs">
+                      {w.exercises.length} exercises · {totalSets} sets · top {topWeight} lbs
+                    </div>
+                  </div>
+                  <button onClick={() => deleteWorkout(w.id)} className="text-[#8B8D93] active:text-[#FF4B2B]">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {w.exercises.map((e) => (
+                    <span key={e.id} className="text-[11px] bg-[#232427] rounded-full px-2 py-1 text-[#C9CACD]">
+                      {e.name} <span className="text-[#8B8D93]">×{e.sets.length}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    function ProgressTab({ names, selected, setSelected, workouts }) {
+      if (names.length === 0) {
+        return (
+          <div className="mt-16 text-center text-[#8B8D93]">
+            <TrendingUp className="mx-auto mb-3" size={26} />
+            <div className="text-sm">Nothing to chart yet.</div>
+            <div className="text-sm">Log a few sessions and your trends land here.</div>
+          </div>
+        );
+      }
+      const active = selected && names.includes(selected) ? selected : names[0];
+      const data = workouts
+        .filter((w) => w.status === "done")
+        .map((w) => {
+          const sets = (w.exercises.find((e) => e.name === active) || {}).sets || [];
+          if (sets.length === 0) return null;
+          const best = Math.max(...sets.map((s) => epley1RM(Number(s.weight) || 0, Number(s.reps) || 0)));
+          const topSet = sets.reduce((x, y) =>
+            epley1RM(Number(x.weight) || 0, Number(x.reps) || 0) >= epley1RM(Number(y.weight) || 0, Number(y.reps) || 0) ? x : y);
+          return { date: w.date, e1rm: best, label: `${topSet.weight}×${topSet.reps}` };
+        })
+        .filter(Boolean)
+        .sort((x, y) => (x.date > y.date ? 1 : -1));
+
+      return (
+        <div>
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-4 px-4">
+            {names.map((n) => (
+              <button key={n} onClick={() => setSelected(n)} className="shrink-0 text-xs px-3 py-2 rounded-full"
+                style={{ backgroundColor: n === active ? "#FF4B2B" : "#1C1D20", color: n === active ? "#fff" : "#8B8D93" }}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {data.length === 0 ? (
+            <div className="text-[#8B8D93] text-sm mt-8 text-center">No completed sets for {active} yet.</div>
+          ) : (
+            <div className="bg-[#1C1D20] rounded-2xl p-4">
+              <div className="text-[#8B8D93] text-xs uppercase tracking-widest mb-1">Estimated 1RM (Epley)</div>
+              <div className="num text-3xl mb-3" style={{ color: "#C8FF3D" }}>
+                {data[data.length - 1].e1rm} <span className="text-base text-[#8B8D93]">lbs</span>
+              </div>
+              <MiniChart data={data} />
+              <div className="text-[10px] text-[#8B8D93] mt-2 text-center">Tap a point to inspect that session.</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ---------- root ---------- */
+    function App() {
+      const { workouts, persist, saving } = useWorkouts();
+      const [tab, setTab] = useState("log");
+      const [progressExercise, setProgressExercise] = useState(null);
+
+      const safeWorkouts = workouts || [];
+
+      const loggedExerciseNames = useMemo(() => {
+        const set = new Set();
+        safeWorkouts.forEach((w) => w.exercises.forEach((e) => set.add(e.name)));
+        return Array.from(set).sort();
+      }, [safeWorkouts]);
+
+      const bestE1RM = useCallback((name, excludeWorkoutId) => {
+        let best = 0;
+        safeWorkouts.forEach((w) => {
+          if (w.id === excludeWorkoutId) return;
+          w.exercises.forEach((e) => {
+            if (e.name !== name) return;
+            e.sets.forEach((s) => {
+              const e1 = epley1RM(Number(s.weight) || 0, Number(s.reps) || 0);
+              if (e1 > best) best = e1;
+            });
+          });
+        });
+        return best;
+      }, [safeWorkouts]);
+
+      // App name, full-screen meta, and a generated home-screen icon.
+      useEffect(() => {
+        try {
+          const size = 180;
+          const canvas = document.createElement("canvas");
+          canvas.width = size; canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          const rr = (x, y, w, h, r) => {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+          };
+          const g = ctx.createLinearGradient(0, 0, size, size);
+          g.addColorStop(0, "#26272B"); g.addColorStop(1, "#121214");
+          ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+          ctx.save();
+          ctx.translate(size / 2, size / 2);
+          ctx.rotate(-Math.PI / 9);
+          ctx.fillStyle = "#9A9CA1"; rr(-36, -8, 72, 16, 6); ctx.fill();
+          const plates = (dir) => {
+            ctx.fillStyle = "#FF4B2B"; rr(dir * 30 - (dir < 0 ? 16 : 0), -32, 16, 64, 7); ctx.fill();
+            ctx.fillStyle = "#FF6A4D"; rr(dir * 46 - (dir < 0 ? 14 : 0), -23, 14, 46, 6); ctx.fill();
+          };
+          plates(1); plates(-1); ctx.restore();
+          const dataUrl = canvas.toDataURL("image/png");
+          let link = document.querySelector('link[rel="apple-touch-icon"]');
+          if (!link) { link = document.createElement("link"); link.setAttribute("rel", "apple-touch-icon"); document.head.appendChild(link); }
+          link.setAttribute("href", dataUrl);
+          let fav = document.querySelector('link[rel="icon"]');
+          if (!fav) { fav = document.createElement("link"); fav.setAttribute("rel", "icon"); document.head.appendChild(fav); }
+          fav.setAttribute("href", dataUrl);
+        } catch {}
+      }, []);
+
+      if (workouts === null) {
+        return (
+          <div className="min-h-screen bg-[#121214] flex items-center justify-center text-[#8B8D93]">
+            <Loader2 className="spin mr-2" size={18} /> Loading your log…
+          </div>
+        );
+      }
+
+      const draft = workouts.find((w) => w.status === "draft");
+      const done = workouts.filter((w) => w.status === "done").sort((x, y) => (x.date < y.date ? 1 : -1));
+
+      const startWorkout = () => {
+        if (draft) return;
+        persist([...workouts, { id: uid(), date: todayISO(), status: "draft", exercises: [] }]);
+      };
+      const updateDraft = (updater) => {
+        if (!draft) return;
+        persist(workouts.map((w) => (w.id === draft.id ? updater(w) : w)));
+      };
+      const finishWorkout = () => {
+        if (!draft) return;
+        updateDraft((w) => ({ ...w, status: "done" }));
+        setTab("history");
+      };
+      const discardWorkout = () => {
+        if (!draft) return;
+        persist(workouts.filter((w) => w.id !== draft.id));
+      };
+      const deleteWorkout = (id) => persist(workouts.filter((w) => w.id !== id));
+
+      return (
+        <div className="min-h-screen bg-[#121214] text-[#F2F1ED] pb-24">
+          <Header date={todayISO()} saving={saving} />
+          <main className="px-4 max-w-md mx-auto">
+            {tab === "log" && (
+              <LogTab draft={draft} startWorkout={startWorkout} updateDraft={updateDraft}
+                finishWorkout={finishWorkout} discardWorkout={discardWorkout} bestE1RM={bestE1RM} />
+            )}
+            {tab === "history" && <HistoryTab done={done} deleteWorkout={deleteWorkout} />}
+            {tab === "progress" && (
+              <ProgressTab names={loggedExerciseNames} selected={progressExercise}
+                setSelected={setProgressExercise} workouts={workouts} />
+            )}
+          </main>
+          <BottomNav tab={tab} setTab={setTab} hasDraft={!!draft} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
